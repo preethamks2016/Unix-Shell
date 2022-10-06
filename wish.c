@@ -172,14 +172,15 @@ int main(int argc, char* argv[])
     if (argc==1) {
         batchMode = false;
     } else if (argc==2) {
-        printf("%s\n", argv[1]);
+        // printf("%s\n", argv[1]);
         inputFile = argv[1];
         batchMode=true;
         int fd = open(inputFile, O_RDONLY); //todo: if open fails/ corrupt file. file does not exist
-        printf("stdin fileno: %d\n",fileno(stdin));
-        printf("fd fileno: %d\n",fd);
+        if (fd==-1) {
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            exit(1);
+        }
         dup2(fd, fileno(stdin));  
-        printf("new stdin fileno: %d\n",fileno(stdin));
     } else { // more than 1 input file
         write(STDERR_FILENO, error_message, strlen(error_message));
         exit(1);
@@ -192,8 +193,7 @@ int main(int argc, char* argv[])
             printf("wish>");
             characters = getline(&string, &bufsize, stdin);
         }
-        printf("command: %s", string);
-        printf("reached\n");
+        // printf("command: %s", string);
         char* str = strdup(string); // copy of the command
         // convert string into command
         char ** argv = processString(str);
