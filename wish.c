@@ -4,23 +4,70 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 size_t bufsize = 100;
 char** searchPath;
 int count;
+int redirect = 0;
 int pathCount = 1;
 char error_message[30] = "An error has occurred\n";
+char* outputFile;
 
 
 void init() {
     searchPath = (char**) malloc(100*sizeof(char*));
-    searchPath[0] = strdup("/bin");
+    searchPath[0] = strdup("/bin/");
     return;
 }
 
-char** processString(char* str) {
+char* getTrimmedFileName(char* str) {
+    const char sep[6] = " \t\n";
+    char** arr = NULL;
+    char* fileName = strtok(str, sep);
+    printf("output fileName: %s\n", fileName);
+    if(strtok(NULL, sep)!=NULL) write(STDERR_FILENO, error_message, strlen(error_message));
+    return fileName;
+}
+
+char* splitRedirection(char* str) {
+    const char sep[2] = ">";
+    int splits=0;
+    char** arr = NULL;
+    char* token = strtok(str, sep);
+    while(token != NULL) {
+        arr = realloc (arr, sizeof (char*) * ++splits);
+        if (splits>2) break;
+        if (arr == NULL) exit (-1); // memory allocation failed 
+        arr[splits-1] = token;
+        token = strtok(NULL, sep);
+    }
+    printf("splits: %d\n", splits);
+    if(splits==1) 
+    {
+        redirect = 0; 
+        return str;
+    }
+    else if(splits==2) // return the part before '>'
+    {   
+        redirect = 1;
+        outputFile = getTrimmedFileName(arr[1]);
+        return arr[0];
+    } 
+    else // error
+    {
+       write(STDERR_FILENO, error_message, strlen(error_message)); 
+    }
+
+    return str;
+}
+
+char** processString(char* str1) {
     char ** argv = NULL; // char array input for exec command
     // printf("You typed: '%s'\n", command);
+
+    // check for redirection
+    char* str = splitRedirection(str1);
 
     // split string and append tokens to 'argv'
     count = 0;
@@ -77,7 +124,8 @@ void process(char** argv) {
         // update global variable 'searchPath'
         printf("adding paths..\n");
         for(int i=1; i<count; i++) {
-            searchPath[i-1]=strdup(argv[i]); //todo: add trailing /
+            searchPath[i-1]=strdup(argv[i]); 
+            strcat(searchPath[i-1], "/"); //add trailing /
             printf("%s\n", searchPath[i-1]);
         }
         pathCount = count-1;
@@ -88,7 +136,7 @@ void process(char** argv) {
         if(count==2) {
             chdir(argv[1]);
         } else {
-            printf("%s", error_message);
+            write(STDERR_FILENO, error_message, strlen(error_message));
         }
     } else {
         // not a built-in command
@@ -96,6 +144,12 @@ void process(char** argv) {
         pid_t pid = fork();
         if (pid == 0) {
             // the child process will execute this
+
+            // check for redirection
+            if (redirect==1) { // change file descriptor
+                int fd = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                dup2(fd, fileno(stdout));  
+            }
             int ret = execv(argv[0], argv); 
             // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
             printf("Failed to execute %s\n", argv[0]);
