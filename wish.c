@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdbool.h>
 
 size_t bufsize = 100;
 char** searchPath;
@@ -25,7 +26,7 @@ char* getTrimmedFileName(char* str) {
     const char sep[6] = " \t\n";
     char** arr = NULL;
     char* fileName = strtok(str, sep);
-    printf("output fileName: %s\n", fileName);
+    // printf("output fileName: %s\n", fileName);
     if(strtok(NULL, sep)!=NULL) write(STDERR_FILENO, error_message, strlen(error_message));
     return fileName;
 }
@@ -42,7 +43,7 @@ char* splitRedirection(char* str) {
         arr[splits-1] = token;
         token = strtok(NULL, sep);
     }
-    printf("splits: %d\n", splits);
+    // printf("splits: %d\n", splits);
     if(splits==1) 
     {
         redirect = 0; 
@@ -86,11 +87,11 @@ char** processString(char* str1) {
     argv = realloc(argv, sizeof (char*) * (count+1));
     argv[count] = NULL;
 
-    printf("count: %d\n", count);
-    printf("printing args - \n");
-    for(int i=0; i<count; i++) {
-        printf("%s\n", argv[i]);
-    }
+    // printf("count: %d\n", count);
+    // printf("printing args - \n");
+    // for(int i=0; i<count; i++) {
+    //     printf("%s\n", argv[i]);
+    // }
     return argv;
 }
 
@@ -101,9 +102,9 @@ void modifyPath(char** argv) {
         //concatenate with path
         newPath = strdup(searchPath[i]);
         strcat(newPath, argv[0]);
-        printf("newPath %d: %s\n", i, newPath);
+        // printf("newPath %d: %s\n", i, newPath);
         if (access(newPath, X_OK)==0) {
-            printf("matched!\n");
+            // printf("matched!\n");
             argv[0] = newPath;
             return;
         }
@@ -122,14 +123,14 @@ void process(char** argv) {
     else if (strcmp(command, "path") == 0) {
         // printf("size: %d\n", args-1); // number of paths
         // update global variable 'searchPath'
-        printf("adding paths..\n");
+        // printf("adding paths..\n");
         for(int i=1; i<count; i++) {
             searchPath[i-1]=strdup(argv[i]); 
             strcat(searchPath[i-1], "/"); //add trailing /
             printf("%s\n", searchPath[i-1]);
         }
         pathCount = count-1;
-        printf("pathCount: %d\n", pathCount);
+        // printf("pathCount: %d\n", pathCount);
     } 
     //3) cd
     else if (strcmp(command, "cd") == 0) {
@@ -152,7 +153,7 @@ void process(char** argv) {
             }
             int ret = execv(argv[0], argv); 
             // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
-            printf("Failed to execute %s\n", argv[0]);
+            printf("Failed to execute %s\n", argv[0]); //todo: error?
             exit(1); 
         } else {
             // do parent's work
@@ -162,15 +163,37 @@ void process(char** argv) {
     }
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-    char *string;
     init();
-    int n=3;
-    while(1) {
-        printf("wish>");
-        size_t characters = getline(&string, &bufsize, stdin);
-        printf("%s", string);
+
+    char* inputFile;
+    bool batchMode;
+    if (argc==1) {
+        batchMode = false;
+    } else if (argc==2) {
+        printf("%s\n", argv[1]);
+        inputFile = argv[1];
+        batchMode=true;
+        int fd = open(inputFile, O_RDONLY); //todo: if open fails/ corrupt file. file does not exist
+        printf("stdin fileno: %d\n",fileno(stdin));
+        printf("fd fileno: %d\n",fd);
+        dup2(fd, fileno(stdin));  
+        printf("new stdin fileno: %d\n",fileno(stdin));
+    } else { // more than 1 input file
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        exit(1);
+    }
+
+    char *string;
+    size_t characters;
+    while((!batchMode) || (batchMode && ((characters = getline(&string, &bufsize, stdin)) != -1))) {
+        if (!batchMode) {
+            printf("wish>");
+            characters = getline(&string, &bufsize, stdin);
+        }
+        printf("command: %s", string);
+        printf("reached\n");
         char* str = strdup(string); // copy of the command
         // convert string into command
         char ** argv = processString(str);
