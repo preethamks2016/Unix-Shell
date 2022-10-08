@@ -124,6 +124,136 @@ char* getPath(char** argv) {
     return argv[0];
 }
 
+// int executeCommand(char** argv, char* redirectPath) {
+//     // not built in
+//     char* path = getPath(argv); // search in paths and modify accordingly
+
+//     pid_t pid = fork();
+//     if (pid == 0) {
+//         // the child process will execute this
+//         // check for redirection
+//         if (redirectPath != NULL) { // change file descriptor
+//             int fd = open(redirectPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+//             dup2(fd, fileno(stdout));  
+//         }
+//         execv(path, argv); 
+//         // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
+//         write(STDERR_FILENO, error_message, strlen(error_message));
+//         exit(1); 
+//     } else {
+//         // do parent's work
+//         int status;
+//         waitpid(pid, &status, 0); // wait for the child to finish its work before keep going
+//         return WEXITSTATUS(status);
+//     }
+// }
+
+int executeCommand(char** argv) {
+    // not built in
+    char* path = getPath(argv); // search in paths and modify accordingly
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        // the child process will execute this
+        execv(path, argv); 
+        // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        exit(1); 
+    } else {
+        // do parent's work
+        int status;
+        waitpid(pid, &status, 0); // wait for the child to finish its work before keep going
+        return WEXITSTATUS(status);
+    }
+}
+
+void processIfElse(char** argv, int start, int end) {
+    // check syntax
+    if ((strcmp(argv[start], "if") != 0) || (strcmp(argv[end], "fi") != 0)) {
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        return;
+    }
+
+    // build if command
+    int i=start+1;
+    char** cmd=NULL;
+
+    while(i<=end && (strcmp(argv[i], "==") != 0) && (strcmp(argv[i], "!=") != 0)) {
+        cmd = realloc (cmd, sizeof(char*) * (i-start));
+        cmd[i-(start+1)] = argv[i];
+        i++;
+    }
+
+    // printf("i: %d. count: %d\n", i, count);
+    // if i reaches end -> error
+    if(i > end) {
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        return;
+    }
+
+    cmd[i-(start+1)] = NULL;
+    //execute if command
+    int out = executeCommand(cmd);
+    // printf("out: %d\n", out);
+
+    if (((strcmp(argv[i], "==") == 0) && out == atoi(argv[i+1])) || ((strcmp(argv[i], "!=") == 0) && out != atoi(argv[i+1]))) {
+        if ((strcmp(argv[i+2], "then") == 0)) {
+            // execute then
+            int j=i+3; // after then
+            // printf("j: %d\n", j);
+
+            // recursion
+            if (strcmp(argv[j], "if") == 0) {
+                // recursive call
+                processIfElse(argv, j, end-1);
+                return;
+            }
+
+            char** cmd1=NULL;
+            while((strcmp(argv[j], "fi") != 0)) {
+                cmd1 = realloc (cmd1, sizeof (char*) * j);
+                cmd1[j-(i+3)] = argv[j];
+                j++;
+            }
+            // if no command after then
+            if(j-(i+3)==0) {
+                // do nothing
+                return;
+            }
+
+            cmd1[j-(i+3)] = NULL;
+
+            //built in command
+            if (strcmp(cmd1[0], "cd") == 0) {
+                if(j-(i+3)==2) {
+                    chdir(cmd1[1]);
+                } else {
+                    write(STDERR_FILENO, error_message, strlen(error_message));
+                    return;
+                }
+            } 
+            //not built in 
+            else {
+                // check for redirection
+                // char* redirectPath = NULL;
+                // for(int k=0;k<j-(i+3);k++){
+                //     if((strcmp(cmd1[k], ">") == 0)) {
+                //         cmd1[k]=NULL;
+                //         redirectPath = strdup(cmd1[k+1]);
+                //     }
+                // }
+                // printf("redirectPath: %s", redirectPath);
+                // executeCommand(cmd1, redirectPath);
+                executeCommand(cmd1);
+            }
+        } else {
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            return;
+        }
+    }
+    return;
+}
+
 int process(char** argv) {
     char* command = argv[0]; // get first word
     // todo: switch case
@@ -158,8 +288,13 @@ int process(char** argv) {
             write(STDERR_FILENO, error_message, strlen(error_message));
             return 0;
         }
-    } else {
-        // not a built-in command
+    } 
+    // 4) if else
+    else if (strcmp(command, "if") == 0) {
+        processIfElse(argv, 0, count-1);
+    }
+    // not a built-in command
+    else {
         char* path = getPath(argv); // search in paths and modify accordingly
         pid_t pid = fork();
         if (pid == 0) {
@@ -170,8 +305,7 @@ int process(char** argv) {
                 int fd = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 dup2(fd, fileno(stdout));  
             }
-            char* envList[] = { "HOME=/root", "PATH=/bin/:/sbin/", NULL };
-            int ret = execve(path, argv, envList); 
+            int ret = execv(path, argv); 
             // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
             write(STDERR_FILENO, error_message, strlen(error_message));
             exit(1); 
@@ -179,7 +313,6 @@ int process(char** argv) {
             // do parent's work
             int status;
             waitpid(pid, &status, 0); // wait for the child to finish its work before keep going
-            // printf("status: %d\n", WEXITSTATUS(status));
         }
     }
     return 0;
