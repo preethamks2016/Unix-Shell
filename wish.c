@@ -31,7 +31,7 @@ char* getTrimmedFileName(char* str) {
     return fileName;
 }
 
-char* splitRedirection(char* str) {
+char* splitRedirection(char* str, int* status) {
     const char sep[2] = ">";
     int splits=0;
     char** arr = NULL;
@@ -54,23 +54,32 @@ char* splitRedirection(char* str) {
         redirect = 1;
         outputFile = getTrimmedFileName(arr[1]);
         // printf("arr[1]: %s\n", arr[1]);
-        if (outputFile == NULL) write(STDERR_FILENO, error_message, strlen(error_message)); 
+        if (outputFile == NULL) {
+            write(STDERR_FILENO, error_message, strlen(error_message)); 
+            *status = 1;
+        }
         return arr[0];
     } 
     else // error
     {
        write(STDERR_FILENO, error_message, strlen(error_message)); 
+       *status = 1;
     }
 
     return str;
 }
 
-char** processString(char* str1) {
+char** processString(char* str1, int* status) {
     char ** argv = NULL; // char array input for exec command
     // printf("You typed: '%s'\n", command);
 
     // check for redirection
-    char* str = splitRedirection(str1);
+    int splitStatus;
+    char* str = splitRedirection(str1, &splitStatus);
+    if(splitStatus != 0) {
+        *status = 1;
+        return argv;
+    }
 
     // split string and append tokens to 'argv'
     count = 0;
@@ -207,7 +216,10 @@ int main(int argc, char* argv[])
         // printf("command: %s", string);
         char* str = strdup(string); // copy of the command
         // convert string into command
-        char ** argv = processString(str);
+        int status = 0;
+        char ** argv = processString(str, &status);
+        if (status != 0) continue; //error in parsing
+        // printf("status: %d\n", status);
         // process the command
         int ret = process(argv);
         // printf("processing complete\n");
