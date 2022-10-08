@@ -27,7 +27,9 @@ char* getTrimmedFileName(char* str) {
     char** arr = NULL;
     char* fileName = strtok(str, sep);
     // printf("output fileName: %s\n", fileName);
-    if(strtok(NULL, sep)!=NULL) write(STDERR_FILENO, error_message, strlen(error_message));
+    if(strtok(NULL, sep)!=NULL) { // more than 1 file
+        return NULL;
+    }
     return fileName;
 }
 
@@ -218,6 +220,7 @@ int main(int argc, char* argv[])
         // convert string into command
         int status = 0;
         char ** argv = processString(str, &status);
+        if (count == 0) continue; // empty line
         if (status != 0) continue; //error in parsing
         // printf("status: %d\n", status);
         // process the command
