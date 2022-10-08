@@ -49,10 +49,12 @@ char* splitRedirection(char* str) {
         redirect = 0; 
         return str;
     }
-    else if(splits==2) // return the part before '>'
+    else if(splits==2) // return the part after '>'
     {   
         redirect = 1;
         outputFile = getTrimmedFileName(arr[1]);
+        // printf("arr[1]: %s\n", arr[1]);
+        if (outputFile == NULL) write(STDERR_FILENO, error_message, strlen(error_message)); 
         return arr[0];
     } 
     else // error
@@ -95,8 +97,8 @@ char** processString(char* str1) {
     return argv;
 }
 
-void modifyPath(char** argv) {
-    if (access(argv[0], X_OK)==0) return;
+char* getPath(char** argv) {
+    if (access(argv[0], X_OK)==0) return argv[0];
     char* newPath;
     for(int i=0; i<pathCount; i++) {
         //concatenate with path
@@ -105,19 +107,23 @@ void modifyPath(char** argv) {
         // printf("newPath %d: %s\n", i, newPath);
         if (access(newPath, X_OK)==0) {
             // printf("matched!\n");
-            argv[0] = newPath;
-            return;
+            return newPath;
         }
     }
-    return;
+    return argv[0];
 }
 
-void process(char** argv) {
+int process(char** argv) {
     char* command = argv[0]; // get first word
     // todo: switch case
     //1) exit
     if(strcmp(command, "exit") == 0) {
-        exit(0); // exit the shell
+        // printf("exiting, count:%d\n", count);
+        if(count==1) exit(0); // exit the shell
+        else {
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            return 0;
+        }
     } 
     //2) path
     else if (strcmp(command, "path") == 0) {
@@ -127,7 +133,7 @@ void process(char** argv) {
         for(int i=1; i<count; i++) {
             searchPath[i-1]=strdup(argv[i]); 
             strcat(searchPath[i-1], "/"); //add trailing /
-            printf("%s\n", searchPath[i-1]);
+            // printf("%s\n", searchPath[i-1]);
         }
         pathCount = count-1;
         // printf("pathCount: %d\n", pathCount);
@@ -137,11 +143,13 @@ void process(char** argv) {
         if(count==2) {
             chdir(argv[1]);
         } else {
+            // printf("144\n");
             write(STDERR_FILENO, error_message, strlen(error_message));
+            return 0;
         }
     } else {
         // not a built-in command
-        modifyPath(argv); // search in paths and modify accordingly
+        char* path = getPath(argv); // search in paths and modify accordingly
         pid_t pid = fork();
         if (pid == 0) {
             // the child process will execute this
@@ -151,16 +159,19 @@ void process(char** argv) {
                 int fd = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 dup2(fd, fileno(stdout));  
             }
-            int ret = execv(argv[0], argv); 
+            char* envList[] = { "HOME=/root", "PATH=/bin/:/sbin/", NULL };
+            int ret = execve(path, argv, envList); 
             // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
-            printf("Failed to execute %s\n", argv[0]); //todo: error?
+            write(STDERR_FILENO, error_message, strlen(error_message));
             exit(1); 
         } else {
             // do parent's work
             int status;
             waitpid(pid, &status, 0); // wait for the child to finish its work before keep going
+            // printf("status: %d\n", WEXITSTATUS(status));
         }
     }
+    return 0;
 }
 
 int main(int argc, char* argv[])
@@ -198,7 +209,8 @@ int main(int argc, char* argv[])
         // convert string into command
         char ** argv = processString(str);
         // process the command
-        process(argv);
+        int ret = process(argv);
+        // printf("processing complete\n");
         //free the memory
         free(argv); 
         free(str);
