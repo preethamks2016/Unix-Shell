@@ -44,6 +44,7 @@ bool checkForIf(char* str) {
 
 char* splitRedirection(char* str, int* status) {
     bool ifExists = checkForIf(str);
+    // if it is an if-else statement we do not proceed with redirection
     if (ifExists == true) {
         redirect = 0;
         return str;
@@ -199,7 +200,7 @@ void processIfElse(char** argv, int start, int end) {
             int j=i+3; // after then
             // printf("j: %d\n", j);
 
-            // recursion
+            // if-else recursion
             if (strcmp(argv[j], "if") == 0) {
                 // recursive call
                 processIfElse(argv, j, end-1);
