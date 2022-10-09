@@ -33,11 +33,27 @@ char* getTrimmedFileName(char* str) {
     return fileName;
 }
 
+bool checkForIf(char* str) {
+    const char sep2[6] = " \t";
+    char* firstWord = strtok(strdup(str), sep2);
+
+    // printf("firstWord: %s\n", firstWord);
+    if ((strcmp(firstWord, "if") == 0)) return true;
+    return false;
+}
+
 char* splitRedirection(char* str, int* status) {
+    bool ifExists = checkForIf(str);
+    if (ifExists == true) {
+        redirect = 0;
+        return str;
+    }
+
     const char sep[2] = ">";
     int splits=0;
     char** arr = NULL;
     char* token = strtok(str, sep);
+
     while(token != NULL) {
         arr = realloc (arr, sizeof (char*) * ++splits);
         if (splits>2) break;
@@ -76,7 +92,7 @@ char** processString(char* str1, int* status) {
     // printf("You typed: '%s'\n", command);
 
     // check for redirection
-    int splitStatus;
+    int splitStatus = 0;
     char* str = splitRedirection(str1, &splitStatus);
     if(splitStatus != 0) {
         *status = 1;
@@ -124,37 +140,18 @@ char* getPath(char** argv) {
     return argv[0];
 }
 
-// int executeCommand(char** argv, char* redirectPath) {
-//     // not built in
-//     char* path = getPath(argv); // search in paths and modify accordingly
-
-//     pid_t pid = fork();
-//     if (pid == 0) {
-//         // the child process will execute this
-//         // check for redirection
-//         if (redirectPath != NULL) { // change file descriptor
-//             int fd = open(redirectPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-//             dup2(fd, fileno(stdout));  
-//         }
-//         execv(path, argv); 
-//         // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
-//         write(STDERR_FILENO, error_message, strlen(error_message));
-//         exit(1); 
-//     } else {
-//         // do parent's work
-//         int status;
-//         waitpid(pid, &status, 0); // wait for the child to finish its work before keep going
-//         return WEXITSTATUS(status);
-//     }
-// }
-
-int executeCommand(char** argv) {
+int executeCommand(char** argv, char* redirectPath) {
     // not built in
     char* path = getPath(argv); // search in paths and modify accordingly
 
     pid_t pid = fork();
     if (pid == 0) {
         // the child process will execute this
+        // check for redirection
+        if (redirectPath != NULL) { // change file descriptor
+            int fd = open(redirectPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            dup2(fd, fileno(stdout));  
+        }
         execv(path, argv); 
         // if succeeds, execve should never return. If it returns, it must fail (e.g. cannot find the executable file)
         write(STDERR_FILENO, error_message, strlen(error_message));
@@ -193,7 +190,7 @@ void processIfElse(char** argv, int start, int end) {
 
     cmd[i-(start+1)] = NULL;
     //execute if command
-    int out = executeCommand(cmd);
+    int out = executeCommand(cmd, NULL);
     // printf("out: %d\n", out);
 
     if (((strcmp(argv[i], "==") == 0) && out == atoi(argv[i+1])) || ((strcmp(argv[i], "!=") == 0) && out != atoi(argv[i+1]))) {
@@ -233,18 +230,18 @@ void processIfElse(char** argv, int start, int end) {
                 }
             } 
             //not built in 
-            else {
+            else {                
                 // check for redirection
-                // char* redirectPath = NULL;
-                // for(int k=0;k<j-(i+3);k++){
-                //     if((strcmp(cmd1[k], ">") == 0)) {
-                //         cmd1[k]=NULL;
-                //         redirectPath = strdup(cmd1[k+1]);
-                //     }
-                // }
+                char* redirectPath = NULL;
+                for(int k=0;k<j-(i+3);k++){
+                    if((strcmp(cmd1[k], ">") == 0)) {
+                        cmd1[k]=NULL;
+                        redirectPath = strdup(cmd1[k+1]);
+                    }
+                }
                 // printf("redirectPath: %s", redirectPath);
-                // executeCommand(cmd1, redirectPath);
-                executeCommand(cmd1);
+                executeCommand(cmd1, redirectPath);
+                // executeCommand(cmd1);
             }
         } else {
             write(STDERR_FILENO, error_message, strlen(error_message));
